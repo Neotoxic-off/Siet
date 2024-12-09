@@ -13,8 +13,11 @@ pub struct Arguments
     pub username: String,
 
     #[arg(long, required = true)]
-    pub passwords: String,
+    pub password: String,
 
     #[arg(short, long, required = false)]
-    pub verbose: bool
+    pub verbose: bool,
+
+    #[arg(short, long, required = false, default_value = "output")]
+    pub output: String
 }

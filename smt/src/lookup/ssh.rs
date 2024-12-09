@@ -1,9 +1,34 @@
-use std::format;
+
 use ssh2::{Session, Channel};
-use std::path::Path;
 use std::io::{Read, Write};
-use log::{info, warn, error};
 use std::net::TcpStream;
+use log::{info, warn, error};
+
+use crate::constants::{
+    WARN_SKIPPING_HANDSHAKE,
+    WARN_SKIPPING_AUTHENTICATION,
+    WARN_SKIPPING_CHANNEL_CREATION,
+    WARN_SKIPPING_CHANNEL_CLOSURE,
+    WARN_SKIPPING_CHANNEL_WAIT_CLOSURE,
+    WARN_SKIPPING_DISCONNECTION,
+    ERROR_CONNECTION_FAILED,
+    INFO_CONNECTION_SUCCESSFUL,
+    ERROR_HANDSHAKE_FAILED,
+    INFO_HANDSHAKE_SUCCESSFUL,
+    ERROR_AUTHENTICATION_FAILED,
+    INFO_AUTHENTICATION_SUCCESSFUL,
+    ERROR_CHANNEL_CREATION_FAILED,
+    INFO_CHANNEL_CREATION_SUCCESSFUL,
+    ERROR_CHANNEL_CLOSURE_FAILED,
+    INFO_CHANNEL_CLOSURE_SUCCESSFUL,
+    ERROR_CHANNEL_WAIT_CLOSURE_FAILED,
+    INFO_CHANNEL_WAIT_CLOSURE_SUCCESSFUL,
+    ERROR_DISCONNECTION_FAILED,
+    INFO_DISCONNECTION_SUCCESSFUL,
+    ERROR_BANNER_RETRIEVE_FAILED,
+    INFO_BANNER_RETRIEVE_SUCCESSFUL,
+    WARN_SKIPPING_BANNER_RETRIEVE
+};
 
 #[derive(PartialEq)]
 pub enum SessionStates {
@@ -17,11 +42,12 @@ pub enum SessionStates {
     SuccessDisconnection,
     FailedDisconnection,
     SuccessChannelCreation,
-    FailedChannelCreation
+    FailedChannelCreation,
+    SuccessChannelClosure,
+    FailedChannelClosure,
 }
 
-pub struct Ssh
-{
+pub struct Ssh {
     pub username: String,
     pub password: String,
     pub address: String,
@@ -31,11 +57,13 @@ pub struct Ssh
 
     session: Session,
     pub session_state: SessionStates,
-    session_channel: Option<Channel>
+    session_channel: Option<Channel>,
+
+    verbose: bool,
 }
 
 impl Ssh {
-    pub fn new(username: String, password: String, address: String, port: u32) -> Ssh {
+    pub fn new(username: String, password: String, address: String, port: u32, verbose: bool) -> Ssh {
         Ssh {
             username,
             password,
@@ -44,7 +72,14 @@ impl Ssh {
             server_ssh_banner: String::new(),
             session: Session::new().unwrap(),
             session_channel: None,
-            session_state: SessionStates::Disconnected
+            session_state: SessionStates::Disconnected,
+            verbose,
+        }
+    }
+
+    fn verbose_log(&self, message: &str) -> () {
+        if self.verbose {
+            warn!("{}", message);
         }
     }
 
@@ -54,139 +89,151 @@ impl Ssh {
         self.authenticate();
     }
 
-    pub fn update(&mut self, username: String, password: String, address: String, port: u32) -> () {
-        self.username = username;
-        self.password = password;
-        self.address = address;
-        self.port = port;
-    }
-
     pub fn lookup(&mut self) -> () {
         self.retrieve_banner();
         self.create_channel();
+        self.retieve_env();
         self.close_channel();
+        self.wait_closure();
     }
 
     pub fn establish_connection(&mut self) -> () {
+        let tcp_stream: Result<TcpStream, std::io::Error> = TcpStream::connect(
+            format!("{}:{}", self.address, self.port)
+        );
+
         if self.session_state == SessionStates::SuccessConnection {
             self.disconnect();
         }
- 
-        match TcpStream::connect(format!("{}:{}", self.address, self.port)) {
-            Ok(tcp) => {
-                self.session.set_tcp_stream(tcp);
-                info!("Connection successful");
-                self.session_state = SessionStates::SuccessConnection;
-            }
-            Err(e) => {
-                error!("Connection failed: {:?}", e);
-                self.session_state = SessionStates::FailedConnection;
-            }
+
+        if let Err(e) = tcp_stream {
+            error!("{}: {:?}", ERROR_CONNECTION_FAILED, e);
+            self.session_state = SessionStates::FailedConnection;
+        } else if let Ok(tcp) = tcp_stream {
+            self.session.set_tcp_stream(tcp);
+            info!("{}", INFO_CONNECTION_SUCCESSFUL);
+            self.session_state = SessionStates::SuccessConnection;
         }
-    }    
+    }
 
     pub fn perform_handshake(&mut self) -> () {
-        let states: Vec<SessionStates> = Vec::from([
+        let states: Vec<SessionStates> = vec![
             SessionStates::FailedHandshake,
             SessionStates::SuccessConnection
-        ]);
+        ];
 
-        if states.contains(&self.session_state) == true {
+        if states.contains(&self.session_state) {
             if let Err(e) = self.session.handshake() {
-                error!("Handshake failed: {:?}", e);
+                error!("{}: {:?}", ERROR_HANDSHAKE_FAILED, e);
                 self.session_state = SessionStates::FailedHandshake;
             } else {
-                info!("Handshake successful");
+                info!("{}", INFO_HANDSHAKE_SUCCESSFUL);
                 self.session_state = SessionStates::SuccessHandshake;
             }
         } else {
-            warn!("Skipping handshake");
+            self.verbose_log(WARN_SKIPPING_HANDSHAKE);
         }
     }
 
     pub fn authenticate(&mut self) -> () {
-        let states: Vec<SessionStates> = Vec::from([
-            SessionStates::FailedAuthentication, SessionStates::SuccessChannelCreation,
-            SessionStates::SuccessHandshake
-        ]);
+        let states: Vec<SessionStates> = vec![
+            SessionStates::FailedAuthentication,
+            SessionStates::SuccessChannelCreation,
+            SessionStates::SuccessHandshake,
+        ];
 
-        if states.contains(&self.session_state) == true {
+        if states.contains(&self.session_state) {
             if let Err(e) = self.session.userauth_password(&self.username, &self.password) {
-                error!("Authentication failed: {:?}", e);
+                error!("{}: {:?}", ERROR_AUTHENTICATION_FAILED, e);
                 self.session_state = SessionStates::FailedAuthentication;
             } else {
-                info!("Authentication successful");
+                info!("{}", INFO_AUTHENTICATION_SUCCESSFUL);
                 self.session_state = SessionStates::SuccessAuthentication;
             }
         } else {
-            warn!("Skipping authentication");
+            self.verbose_log(WARN_SKIPPING_AUTHENTICATION);
         }
     }
 
     fn create_channel(&mut self) -> () {
-        let states: Vec<SessionStates> = Vec::from([
+        let channel_creation: Result<Channel, ssh2::Error> = self.session.channel_session();
+        let states: Vec<SessionStates> = vec![
             SessionStates::SuccessAuthentication,
-            SessionStates::SuccessChannelCreation
-        ]);
+            SessionStates::FailedChannelCreation
+        ];
 
-        if states.contains(&self.session_state) == true {
-            if self.session_channel.is_none() {
-                if let Err(e) = self.session.channel_session() {
-                    error!("Channel creation failed: {:?}", e);
-                    self.session_state = SessionStates::FailedChannelCreation;
-                } else {
-                    info!("Channel creation successful");
-                    self.session_state = SessionStates::SuccessChannelCreation;
-                }
+        if states.contains(&self.session_state) {
+            if let Err(e) = channel_creation {
+                error!("{}: {:?}", ERROR_CHANNEL_CREATION_FAILED, e);
+                self.session_state = SessionStates::FailedChannelCreation;
+            } else if let Ok(channel) = channel_creation {
+                info!("{}", INFO_CHANNEL_CREATION_SUCCESSFUL);
+                self.session_channel = Some(channel);
+                self.session_state = SessionStates::SuccessChannelCreation;
             }
         } else {
-            warn!("Skipping channel creation");
+            self.verbose_log(WARN_SKIPPING_CHANNEL_CREATION);
         }
     }
 
     fn close_channel(&mut self) -> () {
-        if self.session_channel.is_some() {
+        let states: Vec<SessionStates> = vec![
+            SessionStates::FailedChannelClosure,
+            SessionStates::SuccessChannelCreation,
+        ];
+
+        if states.contains(&self.session_state) {
             if let Some(channel) = self.session_channel.as_mut() {
-                match channel.close() {
-                    Ok(_) => info!("Channel closed successfully"),
-                    Err(e) => {
-                        error!("Failed to close channel: {:?}", e);
-                        return;
-                    }
-                }
-    
-                match channel.wait_close() {
-                    Ok(_) => {
-                        info!("Channel wait_close completed successfully");
-                        self.session_channel = None;
-                    }
-                    Err(e) => {
-                        error!("Failed to complete channel wait_close: {:?}", e);
-                    }
+                if let Err(e) = channel.close() {
+                    error!("{}: {:?}", ERROR_CHANNEL_CLOSURE_FAILED, e);
+                    self.session_state = SessionStates::FailedChannelClosure;
+                } else {
+                    info!("{}", INFO_CHANNEL_CLOSURE_SUCCESSFUL);
+                    self.session_state = SessionStates::SuccessChannelClosure;
                 }
             }
         } else {
-            warn!("Skipping channel closure");
+            self.verbose_log(WARN_SKIPPING_CHANNEL_CLOSURE);
         }
     }
-    
+
+    fn wait_closure(&mut self) -> () {
+        let states: Vec<SessionStates> = vec![
+            SessionStates::SuccessChannelClosure
+        ];
+
+        if states.contains(&self.session_state) {
+            if let Some(channel) = self.session_channel.as_mut() {
+                if let Err(e) = channel.wait_close() {
+                    error!("{}: {:?}", ERROR_CHANNEL_WAIT_CLOSURE_FAILED, e);
+                } else {
+                    info!("{}", INFO_CHANNEL_WAIT_CLOSURE_SUCCESSFUL);
+                    self.session_channel = None;
+                }
+            }
+        } else {
+            self.verbose_log(WARN_SKIPPING_CHANNEL_WAIT_CLOSURE);
+        }
+    }
 
     pub fn disconnect(&mut self) -> () {
-        let states: Vec<SessionStates> = Vec::from([
-            SessionStates::SuccessAuthentication, SessionStates::SuccessChannelCreation,
-            SessionStates::SuccessConnection, SessionStates::SuccessHandshake
-        ]);
+        let states: Vec<SessionStates> = vec![
+            SessionStates::SuccessAuthentication,
+            SessionStates::SuccessChannelCreation,
+            SessionStates::SuccessConnection,
+            SessionStates::SuccessHandshake,
+        ];
 
-        if states.contains(&self.session_state) == true {
+        if states.contains(&self.session_state) {
             if let Err(e) = self.session.disconnect(None, "", None) {
-                error!("Disconnection failed: {:?}", e);
+                error!("{}: {:?}", ERROR_DISCONNECTION_FAILED, e);
                 self.session_state = SessionStates::FailedDisconnection;
             } else {
-                info!("Disconnection successful");
+                info!("{}", INFO_DISCONNECTION_SUCCESSFUL);
                 self.session_state = SessionStates::SuccessDisconnection;
             }
         } else {
-            warn!("Skipping disconnection");
+            self.verbose_log(WARN_SKIPPING_DISCONNECTION);
         }
     }
 
@@ -194,12 +241,26 @@ impl Ssh {
         if self.session_state == SessionStates::SuccessAuthentication {
             if let Some(banner) = self.session.banner() {
                 self.server_ssh_banner = banner.to_owned();
-                info!("SSH banner retrieved: {}", banner)
+                info!("{}: {}", INFO_BANNER_RETRIEVE_SUCCESSFUL, banner);
             } else {
-                error!("SSH banner retrieve failed");
+                error!("{}", ERROR_BANNER_RETRIEVE_FAILED);
             }
         } else {
-            warn!("Skipping banner retrive");
+            self.verbose_log(WARN_SKIPPING_BANNER_RETRIEVE);
+        }
+    }
+
+    fn retieve_env(&mut self) -> () {
+        if let Some(mut channel) = self.session_channel.take() {
+            channel.exec("env").expect("Failed to execute command");
+            let mut output = String::new();
+            channel.read_to_string(&mut output).expect("Failed to read output");
+            println!("Environment Variables:\n{}", output);
+        
+            channel.close().expect("Failed to close channel");
+            channel.wait_close().expect("Failed to wait for channel closure");
+        } else {
+            error!("Channel is not initialized.");
         }
     }
 }
