@@ -3,4 +3,4 @@
 
 ## Todo
 - [ ] Ssh dictionary attack
-- [ ] Ssh rootkit
+- [ ] Ssh dropper
