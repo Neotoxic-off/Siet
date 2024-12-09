@@ -1,5 +1,5 @@
 use std::format;
-use ssh2::Session;
+use ssh2::{Session, Channel};
 use std::path::Path;
 use std::io::{Read, Write};
 use log::{info, warn, error};
@@ -15,7 +15,9 @@ pub enum SessionStates {
     SuccessAuthentication,
     FailedAuthentication,
     SuccessDisconnection,
-    FailedDisconnection
+    FailedDisconnection,
+    SuccessChannelCreation,
+    FailedChannelCreation
 }
 
 pub struct Ssh
@@ -28,7 +30,8 @@ pub struct Ssh
     pub server_ssh_banner: String,
 
     session: Session,
-    session_state: SessionStates
+    session_state: SessionStates,
+    session_channel: Option<Channel>
 }
 
 impl Ssh {
@@ -40,6 +43,7 @@ impl Ssh {
             port,
             server_ssh_banner: String::new(),
             session: Session::new().unwrap(),
+            session_channel: None,
             session_state: SessionStates::Disconnected
         }
     }
@@ -52,7 +56,8 @@ impl Ssh {
 
     pub fn lookup(&mut self) -> () {
         self.retrieve_banner();
-        self.get_io(&self.session, "/proc/meminfo", "RAM Details");
+        self.create_channel();
+        self.close_channel();
     }
 
     fn establish_connection(&mut self) -> () {
@@ -101,6 +106,49 @@ impl Ssh {
         }
     }
 
+    fn create_channel(&mut self) -> () {
+        if self.session_state == SessionStates::SuccessAuthentication {
+            if self.session_channel.is_none() {
+                if let Err(e) = self.session.channel_session() {
+                    error!("Channel creation failed: {:?}", e);
+                    self.session_state = SessionStates::FailedChannelCreation;
+                } else {
+                    info!("Channel creation successful");
+                    self.session_state = SessionStates::SuccessChannelCreation;
+                }
+            }
+        } else {
+            warn!("Session failed authentication, skipping channel creation");
+        }
+    }
+
+    fn close_channel(&mut self) -> () {
+        if self.session_channel.is_some() {
+            if let Some(channel) = self.session_channel.as_mut() {
+                match channel.close() {
+                    Ok(_) => info!("Channel closed successfully"),
+                    Err(e) => {
+                        error!("Failed to close channel: {:?}", e);
+                        return;
+                    }
+                }
+    
+                match channel.wait_close() {
+                    Ok(_) => {
+                        info!("Channel wait_close completed successfully");
+                        self.session_channel = None;
+                    }
+                    Err(e) => {
+                        error!("Failed to complete channel wait_close: {:?}", e);
+                    }
+                }
+            }
+        } else {
+            warn!("Session failed channel creation, skipping channel closure");
+        }
+    }
+    
+
     pub fn disconnect(&mut self) -> () {
         if self.session_state == SessionStates::SuccessAuthentication {
             if let Err(e) = self.session.disconnect(None, "", None) {
@@ -127,17 +175,4 @@ impl Ssh {
             warn!("Session failed authentication, skipping banner retrive");
         }
     }
-
-    pub fn get_io(&self, session: &Session, file_path: &str, description: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let (mut remote_file, _) = session.scp_recv(Path::new(file_path))?;
-        let mut contents = String::new();
-    
-        remote_file.read_to_string(&mut contents)?;
-    
-        info!("--- {} ---", description);
-        info!("{}", contents);
-    
-        Ok(())
-    }
-    
 }
