@@ -30,7 +30,7 @@ pub struct Ssh
     pub server_ssh_banner: String,
 
     session: Session,
-    session_state: SessionStates,
+    pub session_state: SessionStates,
     session_channel: Option<Channel>
 }
 
@@ -54,13 +54,20 @@ impl Ssh {
         self.authenticate();
     }
 
+    pub fn update(&mut self, username: String, password: String, address: String, port: u32) -> () {
+        self.username = username;
+        self.password = password;
+        self.address = address;
+        self.port = port;
+    }
+
     pub fn lookup(&mut self) -> () {
         self.retrieve_banner();
         self.create_channel();
         self.close_channel();
     }
 
-    fn establish_connection(&mut self) -> () {
+    pub fn establish_connection(&mut self) -> () {
         if self.session_state == SessionStates::SuccessConnection {
             self.disconnect();
         }
@@ -78,8 +85,13 @@ impl Ssh {
         }
     }    
 
-    fn perform_handshake(&mut self) -> () {
-        if self.session_state == SessionStates::SuccessConnection {
+    pub fn perform_handshake(&mut self) -> () {
+        let states: Vec<SessionStates> = Vec::from([
+            SessionStates::FailedHandshake,
+            SessionStates::SuccessConnection
+        ]);
+
+        if states.contains(&self.session_state) == true {
             if let Err(e) = self.session.handshake() {
                 error!("Handshake failed: {:?}", e);
                 self.session_state = SessionStates::FailedHandshake;
@@ -88,12 +100,17 @@ impl Ssh {
                 self.session_state = SessionStates::SuccessHandshake;
             }
         } else {
-            warn!("Session failed connection, skipping handshake");
+            warn!("Skipping handshake");
         }
     }
 
-    fn authenticate(&mut self) -> () {
-        if self.session_state == SessionStates::SuccessHandshake {
+    pub fn authenticate(&mut self) -> () {
+        let states: Vec<SessionStates> = Vec::from([
+            SessionStates::FailedAuthentication, SessionStates::SuccessChannelCreation,
+            SessionStates::SuccessHandshake
+        ]);
+
+        if states.contains(&self.session_state) == true {
             if let Err(e) = self.session.userauth_password(&self.username, &self.password) {
                 error!("Authentication failed: {:?}", e);
                 self.session_state = SessionStates::FailedAuthentication;
@@ -102,12 +119,17 @@ impl Ssh {
                 self.session_state = SessionStates::SuccessAuthentication;
             }
         } else {
-            warn!("Session failed handshake, skipping authentication");
+            warn!("Skipping authentication");
         }
     }
 
     fn create_channel(&mut self) -> () {
-        if self.session_state == SessionStates::SuccessAuthentication {
+        let states: Vec<SessionStates> = Vec::from([
+            SessionStates::SuccessAuthentication,
+            SessionStates::SuccessChannelCreation
+        ]);
+
+        if states.contains(&self.session_state) == true {
             if self.session_channel.is_none() {
                 if let Err(e) = self.session.channel_session() {
                     error!("Channel creation failed: {:?}", e);
@@ -118,7 +140,7 @@ impl Ssh {
                 }
             }
         } else {
-            warn!("Session failed authentication, skipping channel creation");
+            warn!("Skipping channel creation");
         }
     }
 
@@ -144,13 +166,18 @@ impl Ssh {
                 }
             }
         } else {
-            warn!("Session failed channel creation, skipping channel closure");
+            warn!("Skipping channel closure");
         }
     }
     
 
     pub fn disconnect(&mut self) -> () {
-        if self.session_state == SessionStates::SuccessAuthentication {
+        let states: Vec<SessionStates> = Vec::from([
+            SessionStates::SuccessAuthentication, SessionStates::SuccessChannelCreation,
+            SessionStates::SuccessConnection, SessionStates::SuccessHandshake
+        ]);
+
+        if states.contains(&self.session_state) == true {
             if let Err(e) = self.session.disconnect(None, "", None) {
                 error!("Disconnection failed: {:?}", e);
                 self.session_state = SessionStates::FailedDisconnection;
@@ -159,7 +186,7 @@ impl Ssh {
                 self.session_state = SessionStates::SuccessDisconnection;
             }
         } else {
-            warn!("Session failed connection, skipping disconnection");
+            warn!("Skipping disconnection");
         }
     }
 
@@ -172,7 +199,7 @@ impl Ssh {
                 error!("SSH banner retrieve failed");
             }
         } else {
-            warn!("Session failed authentication, skipping banner retrive");
+            warn!("Skipping banner retrive");
         }
     }
 }
