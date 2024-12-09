@@ -1,5 +1,7 @@
-use ssh2::Session;
 use std::format;
+use ssh2::Session;
+use std::path::Path;
+use std::io::{Read, Write};
 use log::{info, warn, error};
 use std::net::TcpStream;
 
@@ -23,6 +25,8 @@ pub struct Ssh
     pub address: String,
     pub port: u32,
 
+    pub server_ssh_banner: String,
+
     session: Session,
     session_state: SessionStates
 }
@@ -34,6 +38,7 @@ impl Ssh {
             password,
             address,
             port,
+            server_ssh_banner: String::new(),
             session: Session::new().unwrap(),
             session_state: SessionStates::Disconnected
         }
@@ -43,6 +48,11 @@ impl Ssh {
         self.establish_connection();
         self.perform_handshake();
         self.authenticate();
+    }
+
+    pub fn lookup(&mut self) -> () {
+        self.retrieve_banner();
+        self.get_io(&self.session, "/proc/meminfo", "RAM Details");
     }
 
     fn establish_connection(&mut self) -> () {
@@ -92,7 +102,7 @@ impl Ssh {
     }
 
     pub fn disconnect(&mut self) -> () {
-        if self.session_state == SessionStates::SuccessConnection {
+        if self.session_state == SessionStates::SuccessAuthentication {
             if let Err(e) = self.session.disconnect(None, "", None) {
                 error!("Disconnection failed: {:?}", e);
                 self.session_state = SessionStates::FailedDisconnection;
@@ -104,4 +114,30 @@ impl Ssh {
             warn!("Session failed connection, skipping disconnection");
         }
     }
+
+    fn retrieve_banner(&mut self) -> () {
+        if self.session_state == SessionStates::SuccessAuthentication {
+            if let Some(banner) = self.session.banner() {
+                self.server_ssh_banner = banner.to_owned();
+                info!("SSH banner retrieved: {}", banner)
+            } else {
+                error!("SSH banner retrieve failed");
+            }
+        } else {
+            warn!("Session failed authentication, skipping banner retrive");
+        }
+    }
+
+    pub fn get_io(&self, session: &Session, file_path: &str, description: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let (mut remote_file, _) = session.scp_recv(Path::new(file_path))?;
+        let mut contents = String::new();
+    
+        remote_file.read_to_string(&mut contents)?;
+    
+        info!("--- {} ---", description);
+        info!("{}", contents);
+    
+        Ok(())
+    }
+    
 }
