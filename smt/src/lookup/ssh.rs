@@ -1,8 +1,10 @@
 
 use ssh2::{Session, Channel};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::net::TcpStream;
 use log::{info, warn, error};
+
+use crate::structs::lookup::Lookup;
 
 use crate::constants::{
     WARN_SKIPPING_HANDSHAKE,
@@ -27,10 +29,14 @@ use crate::constants::{
     INFO_DISCONNECTION_SUCCESSFUL,
     ERROR_BANNER_RETRIEVE_FAILED,
     INFO_BANNER_RETRIEVE_SUCCESSFUL,
-    WARN_SKIPPING_BANNER_RETRIEVE
+    WARN_SKIPPING_BANNER_RETRIEVE,
+    WARN_SKIPPING_ENV_RETRIEVE,
+    ERROR_ENV_RETRIEVE_FAILED,
+    ERROR_ENV_READING_FAILED,
+    INFO_ENV_RETRIEVE_SUCCESSFUL
 };
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum SessionStates {
     Disconnected,
     SuccessConnection,
@@ -53,7 +59,7 @@ pub struct Ssh {
     pub address: String,
     pub port: u32,
 
-    pub server_ssh_banner: String,
+    pub lookup: Lookup,
 
     session: Session,
     pub session_state: SessionStates,
@@ -69,11 +75,14 @@ impl Ssh {
             password,
             address,
             port,
-            server_ssh_banner: String::new(),
             session: Session::new().unwrap(),
             session_channel: None,
             session_state: SessionStates::Disconnected,
             verbose,
+            lookup: Lookup {
+                server_env_variables: None,
+                server_ssh_banner: None
+            }
         }
     }
 
@@ -89,10 +98,10 @@ impl Ssh {
         self.authenticate();
     }
 
-    pub fn lookup(&mut self) -> () {
+    pub fn scan(&mut self) -> () {
         self.retrieve_banner();
         self.create_channel();
-        self.retieve_env();
+        self.retrieve_env();
         self.close_channel();
         self.wait_closure();
     }
@@ -220,8 +229,13 @@ impl Ssh {
         let states: Vec<SessionStates> = vec![
             SessionStates::SuccessAuthentication,
             SessionStates::SuccessChannelCreation,
+            SessionStates::SuccessChannelClosure,
             SessionStates::SuccessConnection,
             SessionStates::SuccessHandshake,
+            SessionStates::FailedAuthentication,
+            SessionStates::FailedChannelClosure,
+            SessionStates::FailedChannelCreation,
+            SessionStates::FailedHandshake
         ];
 
         if states.contains(&self.session_state) {
@@ -240,8 +254,8 @@ impl Ssh {
     fn retrieve_banner(&mut self) -> () {
         if self.session_state == SessionStates::SuccessAuthentication {
             if let Some(banner) = self.session.banner() {
-                self.server_ssh_banner = banner.to_owned();
-                info!("{}: {}", INFO_BANNER_RETRIEVE_SUCCESSFUL, banner);
+                self.lookup.server_ssh_banner = Some(banner.to_owned());
+                info!("{}", INFO_BANNER_RETRIEVE_SUCCESSFUL);
             } else {
                 error!("{}", ERROR_BANNER_RETRIEVE_FAILED);
             }
@@ -250,17 +264,27 @@ impl Ssh {
         }
     }
 
-    fn retieve_env(&mut self) -> () {
-        if let Some(mut channel) = self.session_channel.take() {
-            channel.exec("env").expect("Failed to execute command");
-            let mut output = String::new();
-            channel.read_to_string(&mut output).expect("Failed to read output");
-            println!("Environment Variables:\n{}", output);
-        
-            channel.close().expect("Failed to close channel");
-            channel.wait_close().expect("Failed to wait for channel closure");
+    fn retrieve_env(&mut self) -> () {
+        let mut output = String::new();
+        let states: Vec<SessionStates> = vec![
+            SessionStates::SuccessChannelCreation,
+        ];
+    
+        if states.contains(&self.session_state) {
+            if let Some(channel) = &mut self.session_channel {
+                if let Err(e) = channel.exec("env") {
+                    error!("{}: {:?}", ERROR_ENV_RETRIEVE_FAILED, e);
+                } else {
+                    if let Err(e) = channel.read_to_string(&mut output) {
+                        error!("{}: {:?}", ERROR_ENV_READING_FAILED, e);
+                    } else {
+                        self.lookup.server_env_variables = Some(output);
+                        info!("{}", INFO_ENV_RETRIEVE_SUCCESSFUL);
+                    }
+                }
+            }
         } else {
-            error!("Channel is not initialized.");
+            self.verbose_log(WARN_SKIPPING_ENV_RETRIEVE);
         }
     }
 }

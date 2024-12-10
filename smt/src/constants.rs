@@ -5,6 +5,7 @@ pub const WARN_SKIPPING_CHANNEL_CLOSURE: &str = "Skipping channel closure";
 pub const WARN_SKIPPING_CHANNEL_WAIT_CLOSURE: &str = "Skipping channel closure waiting";
 pub const WARN_SKIPPING_DISCONNECTION: &str = "Skipping disconnection";
 pub const WARN_SKIPPING_BANNER_RETRIEVE: &str = "Skipping banner retrieve";
+pub const WARN_SKIPPING_ENV_RETRIEVE: &str = "Skipping ENV retrieve";
 
 pub const ERROR_CONNECTION_FAILED: &str = "Connection failed";
 pub const ERROR_HANDSHAKE_FAILED: &str = "Handshake failed";
@@ -14,6 +15,8 @@ pub const ERROR_CHANNEL_CLOSURE_FAILED: &str = "Channel closure failed";
 pub const ERROR_CHANNEL_WAIT_CLOSURE_FAILED: &str = "Channel closure waiting failed";
 pub const ERROR_DISCONNECTION_FAILED: &str = "Disconnection failed";
 pub const ERROR_BANNER_RETRIEVE_FAILED: &str = "SSH banner retrieve failed";
+pub const ERROR_ENV_RETRIEVE_FAILED: &str = "ENV retrieve failed";
+pub const ERROR_ENV_READING_FAILED: &str = "ENV reading failed";
 
 pub const INFO_CONNECTION_SUCCESSFUL: &str = "Connection successful";
 pub const INFO_HANDSHAKE_SUCCESSFUL: &str = "Handshake successful";
@@ -23,3 +26,4 @@ pub const INFO_CHANNEL_CLOSURE_SUCCESSFUL: &str = "Channel closure successful";
 pub const INFO_CHANNEL_WAIT_CLOSURE_SUCCESSFUL: &str = "Channel closure waiting successful";
 pub const INFO_DISCONNECTION_SUCCESSFUL: &str = "Disconnection successful";
 pub const INFO_BANNER_RETRIEVE_SUCCESSFUL: &str = "SSH banner retrieved";
+pub const INFO_ENV_RETRIEVE_SUCCESSFUL: &str = "ENV retrieved";

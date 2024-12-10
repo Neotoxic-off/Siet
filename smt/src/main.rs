@@ -3,6 +3,7 @@ use clap::Parser;
 
 pub mod lookup;
 pub mod structs;
+pub mod report;
 pub mod constants;
 
 fn setup() -> () {
@@ -19,7 +20,7 @@ fn connect(username: String, host: String, port: u32, password: String, verbose:
     );
 
     ssh.connect();
-    ssh.lookup();
+    ssh.scan();
     ssh.disconnect();
 }
 
