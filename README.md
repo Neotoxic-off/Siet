@@ -2,7 +2,7 @@
 🧰 Security multi toolkit
 
 ## Todo
-- [ ] Ssh dictionary attack
+- [ ] Ssh monitoring
+- [X] Get env variables
 - [ ] Ssh dropper
 - [ ] Monitor users activity
-- [ ] Monitor env variables
