@@ -6,6 +6,8 @@ pub const WARN_SKIPPING_CHANNEL_WAIT_CLOSURE: &str = "Skipping channel closure w
 pub const WARN_SKIPPING_DISCONNECTION: &str = "Skipping disconnection";
 pub const WARN_SKIPPING_BANNER_RETRIEVE: &str = "Skipping banner retrieve";
 pub const WARN_SKIPPING_ENV_RETRIEVE: &str = "Skipping ENV retrieve";
+pub const WARN_SKIPPING_BASHRC_RETRIEVE: &str = "Skipping bashrc retrieve";
+pub const WARN_SKIPPING_BASH_HISTORY_RETRIEVE: &str = "Skipping bash_history retrieve";
 
 pub const ERROR_CONNECTION_FAILED: &str = "Connection failed";
 pub const ERROR_HANDSHAKE_FAILED: &str = "Handshake failed";
@@ -17,6 +19,10 @@ pub const ERROR_DISCONNECTION_FAILED: &str = "Disconnection failed";
 pub const ERROR_BANNER_RETRIEVE_FAILED: &str = "SSH banner retrieve failed";
 pub const ERROR_ENV_RETRIEVE_FAILED: &str = "ENV retrieve failed";
 pub const ERROR_ENV_READING_FAILED: &str = "ENV reading failed";
+pub const ERROR_BASHRC_RETRIEVE_FAILED: &str = "bashrc retrieve failed";
+pub const ERROR_BASHRC_READING_FAILED: &str = "bashrc reading failed";
+pub const ERROR_BASH_HISTORY_RETRIEVE_FAILED: &str = "bash_history retrieve failed";
+pub const ERROR_BASH_HISTORY_READING_FAILED: &str = "bash_history reading failed";
 
 pub const INFO_CONNECTION_SUCCESSFUL: &str = "Connection successful";
 pub const INFO_HANDSHAKE_SUCCESSFUL: &str = "Handshake successful";
@@ -27,3 +33,5 @@ pub const INFO_CHANNEL_WAIT_CLOSURE_SUCCESSFUL: &str = "Channel closure waiting 
 pub const INFO_DISCONNECTION_SUCCESSFUL: &str = "Disconnection successful";
 pub const INFO_BANNER_RETRIEVE_SUCCESSFUL: &str = "SSH banner retrieved";
 pub const INFO_ENV_RETRIEVE_SUCCESSFUL: &str = "ENV retrieved";
+pub const INFO_BASHRC_RETRIEVE_SUCCESSFUL: &str = "bashrc retrieved";
+pub const INFO_BASH_HISTORY_RETRIEVE_SUCCESSFUL: &str = "bash_history retrieved";

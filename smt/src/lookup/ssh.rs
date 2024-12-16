@@ -33,7 +33,15 @@ use crate::constants::{
     WARN_SKIPPING_ENV_RETRIEVE,
     ERROR_ENV_RETRIEVE_FAILED,
     ERROR_ENV_READING_FAILED,
-    INFO_ENV_RETRIEVE_SUCCESSFUL
+    INFO_ENV_RETRIEVE_SUCCESSFUL,
+    ERROR_BASHRC_RETRIEVE_FAILED,
+    ERROR_BASHRC_READING_FAILED,
+    INFO_BASHRC_RETRIEVE_SUCCESSFUL,
+    WARN_SKIPPING_BASHRC_RETRIEVE,
+    ERROR_BASH_HISTORY_RETRIEVE_FAILED,
+    ERROR_BASH_HISTORY_READING_FAILED,
+    INFO_BASH_HISTORY_RETRIEVE_SUCCESSFUL,
+    WARN_SKIPPING_BASH_HISTORY_RETRIEVE
 };
 
 #[derive(PartialEq, Debug)]
@@ -81,7 +89,9 @@ impl Ssh {
             verbose,
             lookup: Lookup {
                 server_env_variables: None,
-                server_ssh_banner: None
+                server_ssh_banner: None,
+                server_bashrc: None,
+                server_bash_history: None
             }
         }
     }
@@ -101,7 +111,11 @@ impl Ssh {
     pub fn scan(&mut self) -> () {
         self.retrieve_banner();
         self.create_channel();
+
         self.retrieve_env();
+        self.retrieve_bashrc();
+        self.retrieve_bash_history();
+
         self.close_channel();
         self.wait_closure();
     }
@@ -285,6 +299,54 @@ impl Ssh {
             }
         } else {
             self.verbose_log(WARN_SKIPPING_ENV_RETRIEVE);
+        }
+    }
+
+    fn retrieve_bashrc(&mut self) -> () {
+        let mut output = String::new();
+        let states: Vec<SessionStates> = vec![
+            SessionStates::SuccessChannelCreation,
+        ];
+
+        if states.contains(&self.session_state) {
+            if let Some(channel) = &mut self.session_channel {
+                if let Err(e) = channel.exec("cat ~/.bashrc") {
+                    error!("{}: {:?}", ERROR_BASHRC_RETRIEVE_FAILED, e);
+                } else {
+                    if let Err(e) = channel.read_to_string(&mut output) {
+                        error!("{}: {:?}", ERROR_BASHRC_READING_FAILED, e);
+                    } else {
+                        self.lookup.server_bashrc = Some(output);
+                        info!("{}", INFO_BASHRC_RETRIEVE_SUCCESSFUL);
+                    }
+                }
+            }
+        } else {
+            self.verbose_log(WARN_SKIPPING_BASHRC_RETRIEVE);
+        }
+    }
+
+    fn retrieve_bash_history(&mut self) -> () {
+        let mut output = String::new();
+        let states: Vec<SessionStates> = vec![
+            SessionStates::SuccessChannelCreation,
+        ];
+
+        if states.contains(&self.session_state) {
+            if let Some(channel) = &mut self.session_channel {
+                if let Err(e) = channel.exec("cat ~/.bash_history") {
+                    error!("{}: {:?}", ERROR_BASH_HISTORY_RETRIEVE_FAILED, e);
+                } else {
+                    if let Err(e) = channel.read_to_string(&mut output) {
+                        error!("{}: {:?}", ERROR_BASH_HISTORY_READING_FAILED, e);
+                    } else {
+                        self.lookup.server_bash_history = Some(output);
+                        info!("{}", INFO_BASH_HISTORY_RETRIEVE_SUCCESSFUL);
+                    }
+                }
+            }
+        } else {
+            self.verbose_log(WARN_SKIPPING_BASH_HISTORY_RETRIEVE);
         }
     }
 }
