@@ -110,14 +110,10 @@ impl Ssh {
 
     pub fn scan(&mut self) -> () {
         self.retrieve_banner();
-        self.create_channel();
 
         self.retrieve_env();
         self.retrieve_bashrc();
         self.retrieve_bash_history();
-
-        self.close_channel();
-        self.wait_closure();
     }
 
     pub fn establish_connection(&mut self) -> () {
@@ -182,7 +178,8 @@ impl Ssh {
         let channel_creation: Result<Channel, ssh2::Error> = self.session.channel_session();
         let states: Vec<SessionStates> = vec![
             SessionStates::SuccessAuthentication,
-            SessionStates::FailedChannelCreation
+            SessionStates::FailedChannelCreation,
+            SessionStates::SuccessChannelClosure
         ];
 
         if states.contains(&self.session_state) {
@@ -283,7 +280,9 @@ impl Ssh {
         let states: Vec<SessionStates> = vec![
             SessionStates::SuccessChannelCreation,
         ];
-    
+            
+        self.create_channel();
+
         if states.contains(&self.session_state) {
             if let Some(channel) = &mut self.session_channel {
                 if let Err(e) = channel.exec("env") {
@@ -297,6 +296,8 @@ impl Ssh {
                     }
                 }
             }
+            self.close_channel();
+            self.wait_closure();
         } else {
             self.verbose_log(WARN_SKIPPING_ENV_RETRIEVE);
         }
@@ -307,6 +308,8 @@ impl Ssh {
         let states: Vec<SessionStates> = vec![
             SessionStates::SuccessChannelCreation,
         ];
+
+        self.create_channel();
 
         if states.contains(&self.session_state) {
             if let Some(channel) = &mut self.session_channel {
@@ -321,6 +324,8 @@ impl Ssh {
                     }
                 }
             }
+            self.close_channel();
+            self.wait_closure();
         } else {
             self.verbose_log(WARN_SKIPPING_BASHRC_RETRIEVE);
         }
@@ -332,6 +337,7 @@ impl Ssh {
             SessionStates::SuccessChannelCreation,
         ];
 
+        self.create_channel();
         if states.contains(&self.session_state) {
             if let Some(channel) = &mut self.session_channel {
                 if let Err(e) = channel.exec("cat ~/.bash_history") {
@@ -345,6 +351,9 @@ impl Ssh {
                     }
                 }
             }
+
+            self.close_channel();
+            self.wait_closure();
         } else {
             self.verbose_log(WARN_SKIPPING_BASH_HISTORY_RETRIEVE);
         }

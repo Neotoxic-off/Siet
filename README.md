@@ -1,9 +1,9 @@
-# smt
-🧰 Security multi toolkit
+# Siet
+🧰 Ssh Information Exfiltration toolkit
 
 ## Usage
 ```BASH
-Usage: smt [OPTIONS] --host <HOST> --port <PORT> --username <USERNAME> --password <PASSWORD>
+Usage: siet [OPTIONS] --host <HOST> --port <PORT> --username <USERNAME> --password <PASSWORD>
 
 Options:
       --host <HOST>          
@@ -15,8 +15,3 @@ Options:
   -h, --help                 Print help
 ```
 
-## Todo
-- [ ] Ssh monitoring
-- [X] Get env variables
-- [ ] Ssh dropper
-- [ ] Monitor users activity
